@@ -1,17 +1,27 @@
 use anyhow::{Context, Result};
 use regex::Regex;
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-/// Fetches the transcript for a YouTube video
-pub async fn fetch_transcript(video_id: &str) -> Result<String> {
+/// Structure to hold video metadata
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VideoMetadata {
+    pub video_id: String,
+    pub title: String,
+    pub description: String,
+    pub transcript: String,
+}
+
+/// Fetches the transcript and metadata for a YouTube video
+pub async fn fetch_video_data(video_id: &str) -> Result<VideoMetadata> {
     // Create a reqwest client with appropriate timeouts
     let client = Client::builder()
         .timeout(Duration::from_secs(30))
         .build()
         .context("Failed to build HTTP client")?;
 
-    // First, we need to make a request to get the video page to extract some metadata
+    // First, we need to make a request to get the video page to extract metadata
     let video_url = format!("https://www.youtube.com/watch?v={}", video_id);
     let response = client.get(&video_url)
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
@@ -21,7 +31,13 @@ pub async fn fetch_transcript(video_id: &str) -> Result<String> {
     
     let html = response.text().await.context("Failed to get YouTube page content")?;
 
-    // Extract captions URL from the HTML
+    // Extract title, description, and captions URL from the HTML
+    let title = extract_video_title(&html)
+        .context("Failed to extract video title")?;
+    
+    let description = extract_video_description(&html)
+        .context("Failed to extract video description")?;
+    
     let captions_url = extract_captions_url(&html)
         .context("Failed to extract captions URL")?;
     
@@ -35,8 +51,16 @@ pub async fn fetch_transcript(video_id: &str) -> Result<String> {
         .context("Failed to get transcript content")?;
     
     // Parse and format the transcript
-    parse_transcript_data(&transcript_data)
-        .context("Failed to parse transcript data")
+    let transcript = parse_transcript_data(&transcript_data)
+        .context("Failed to parse transcript data")?;
+    
+    // Return the complete video metadata
+    Ok(VideoMetadata {
+        video_id: video_id.to_string(),
+        title,
+        description,
+        transcript,
+    })
 }
 
 /// Extract the captions URL from the video page HTML
@@ -121,6 +145,54 @@ fn decode_html_entities(text: &str) -> String {
     }
     
     result
+}
+
+/// Extract the video title from the HTML
+fn extract_video_title(html: &str) -> Result<String> {
+    // Try to find the title in various patterns used by YouTube
+    let patterns = [
+        r#"<meta property="og:title" content="(.*?)">"#,
+        r#"<meta name="title" content="(.*?)">"#,
+        r#"<title>(.*?) - YouTube</title>"#,
+    ];
+    
+    for pattern in patterns {
+        let re = Regex::new(pattern).context("Failed to compile title regex")?;
+        
+        if let Some(captures) = re.captures(html) {
+            if let Some(title) = captures.get(1) {
+                return Ok(decode_html_entities(title.as_str()));
+            }
+        }
+    }
+    
+    // If we can't find a title, return a generic one
+    Ok("Untitled YouTube Video".to_string())
+}
+
+/// Extract the video description from the HTML
+fn extract_video_description(html: &str) -> Result<String> {
+    // Try to find the description in various patterns used by YouTube
+    let patterns = [
+        r#"<meta property="og:description" content="(.*?)">"#,
+        r#"<meta name="description" content="(.*?)">"#,
+        r#""description":\s*"(.*?)(?<!\\)(?:\\\\)*""# // From the JSON data
+    ];
+    
+    for pattern in patterns {
+        let re = Regex::new(pattern).context("Failed to compile description regex")?;
+        
+        if let Some(captures) = re.captures(html) {
+            if let Some(description) = captures.get(1) {
+                // YouTube descriptions can be quite long, so we might want to truncate them
+                let desc = decode_html_entities(description.as_str());
+                return Ok(desc);
+            }
+        }
+    }
+    
+    // If we can't find a description, return an empty one
+    Ok("No description available.".to_string())
 }
 
 // Fallback method removed to avoid unused code warning

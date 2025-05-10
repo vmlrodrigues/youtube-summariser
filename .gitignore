@@ -1,7 +1,5 @@
 /target
 .env
 .DS_Store
-/transcripts/*
-/summaries/*
-/highlights/*
-!.gitkeep
+/output/*
+!output/.gitkeep

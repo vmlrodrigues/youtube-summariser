@@ -5,7 +5,7 @@ A Rust-based command line tool that extracts transcripts from YouTube videos and
 ## Features
 
 - Extract transcripts from YouTube videos
-- Store transcripts locally for future use
+- Store transcripts and metadata locally in an organized directory structure
 - Generate comprehensive summaries of the video content using OpenAI
 - Identify and highlight new, unique, or unusual information from the videos
 - Saves all outputs in Markdown format for easy reading
@@ -69,9 +69,12 @@ Or use the built executable directly:
 
 ## Directory Structure
 
-- `transcripts/`: Stores the raw text transcripts (named by video ID)
-- `summaries/`: Contains generated summaries in Markdown format
-- `highlights/`: Contains highlighted unique information in Markdown format
+- `output/`: Main output directory
+  - `VIDEO_ID/`: Subdirectory for each processed video
+    - `info.md`: Contains the video title and description
+    - `transcript.txt`: The raw text transcript
+    - `summary.md`: Generated summary in Markdown format
+    - `highlights.md`: Highlighted unique information in Markdown format
 
 ## Example
 
@@ -80,10 +83,12 @@ cargo run -- https://www.youtube.com/watch?v=dQw4w9WgXcQ
 ```
 
 This will:
-1. Extract the transcript for the video with ID "dQw4w9WgXcQ"
-2. Save the transcript to `transcripts/dQw4w9WgXcQ.txt`
-3. Generate a summary and save it to `summaries/dQw4w9WgXcQ.md`
-4. Generate highlights and save them to `highlights/dQw4w9WgXcQ.md`
+1. Extract the transcript and metadata for the video with ID "dQw4w9WgXcQ"
+2. Create a directory at `output/dQw4w9WgXcQ/`
+3. Save the title and description to `output/dQw4w9WgXcQ/info.md`
+4. Save the transcript to `output/dQw4w9WgXcQ/transcript.txt`
+5. Generate a summary and save it to `output/dQw4w9WgXcQ/summary.md`
+6. Generate highlights and save them to `output/dQw4w9WgXcQ/highlights.md`
 
 ## Contributing
 

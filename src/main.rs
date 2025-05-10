@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use dotenv::dotenv;
-use std::path::Path;
 
 mod transcript;
 mod openai;
 mod utils;
+
+use transcript::VideoMetadata;
 
 #[derive(Parser, Debug)]
 #[command(name = "YouTube Summariser")]
@@ -36,50 +37,61 @@ async fn main() -> Result<()> {
     
     println!("Processing YouTube video: {}", video_id);
     
-    // Get transcript (either from cache or by fetching)
-    let transcript_path = Path::new("transcripts").join(format!("{}.txt", video_id));
-    let transcript = if !transcript_path.exists() || args.force {
-        println!("Fetching transcript...");
-        let transcript_text = transcript::fetch_transcript(&video_id)
+    // Get video data (either from cache or by fetching)
+    let transcript_path = utils::get_transcript_path(&video_id);
+    let metadata = if !utils::video_exists(&video_id) || args.force {
+        println!("Fetching video data...");
+        let video_metadata = transcript::fetch_video_data(&video_id)
             .await
-            .context("Failed to fetch transcript")?;
+            .context("Failed to fetch video data")?;
         
-        // Save transcript to file
-        utils::save_to_file(&transcript_path, &transcript_text)
-            .context("Failed to save transcript")?;
+        // Save video files
+        utils::save_video_files(&video_metadata)
+            .context("Failed to save video files")?;
         
-        transcript_text
+        video_metadata
     } else {
         println!("Using cached transcript...");
-        utils::read_from_file(&transcript_path)
-            .context("Failed to read transcript from cache")?
+        let transcript = utils::read_from_file(&transcript_path)
+            .context("Failed to read transcript from cache")?;
+        
+        // Create a basic metadata object from the cached transcript
+        // We don't have title/description from cache, but that's OK
+        VideoMetadata {
+            video_id: video_id.clone(),
+            title: format!("YouTube Video {}", video_id),
+            description: "Description not available for cached video.".to_string(),
+            transcript,
+        }
     };
     
     // Generate summary
     println!("Generating summary...");
-    let summary = openai::generate_summary(&transcript)
+    let summary = openai::generate_summary(&metadata.transcript)
         .await
         .context("Failed to generate summary")?;
     
     // Save summary
-    let summary_path = Path::new("summaries").join(format!("{}.md", video_id));
-    utils::save_to_file(&summary_path, &summary)
+    let _summary_path = utils::save_summary(&video_id, &summary)
         .context("Failed to save summary")?;
     
     // Generate highlights
     println!("Generating highlights...");
-    let highlights = openai::generate_highlights(&transcript)
+    let highlights = openai::generate_highlights(&metadata.transcript)
         .await
         .context("Failed to generate highlights")?;
     
     // Save highlights
-    let highlights_path = Path::new("highlights").join(format!("{}.md", video_id));
-    utils::save_to_file(&highlights_path, &highlights)
+    let _highlights_path = utils::save_highlights(&video_id, &highlights)
         .context("Failed to save highlights")?;
     
     println!("Process completed successfully!");
-    println!("Summary saved to: {}", summary_path.display());
-    println!("Highlights saved to: {}", highlights_path.display());
+    println!("Video: {}", metadata.title);
+    println!("Files saved to: output/{}/", video_id);
+    println!("  - info.md (title and description)");
+    println!("  - transcript.txt");
+    println!("  - summary.md");
+    println!("  - highlights.md");
     
     Ok(())
 }
